@@ -119,6 +119,10 @@ def _llm_classify_batch(new, token):
                 timeout=120,
             )
             r.raise_for_status()
+            u = r.json().get("usage", {})
+            print(f"[hearing] {model}: {u.get('prompt_tokens')}+{u.get('completion_tokens')} tokens, "
+                  f"restan {r.headers.get('x-ratelimit-remaining-requests')} req/día, "
+                  f"{r.headers.get('x-ratelimit-remaining-tokens')} tokens/min")
             text = r.json()["choices"][0]["message"]["content"]
             out = json.loads(text[text.index("{"): text.rindex("}") + 1])["items"]
             return {x["id"]: x for x in out}
@@ -142,8 +146,8 @@ def fetch(prev_state, token=None):
     state = prev_state if prev_state and prev_state.get("day") == str(today) else {"day": str(today), "classified": {}}
     classified = state["classified"]
     found = _gather(today)
-    # con LLM disponible, reclasifica lo que quedó solo por palabras clave (sin resumen)
-    new = {u: it for u, it in found.items() if u not in classified or (token and not classified[u]["summary"])}
+    # con LLM disponible, reclasifica lo que quedó solo por palabras clave (sin marca 'llm')
+    new = {u: it for u, it in found.items() if u not in classified or (token and not classified[u].get("llm"))}
 
     if new:
         llm = {}
@@ -160,7 +164,8 @@ def fetch(prev_state, token=None):
             else:
                 cat = _keyword_classify(it)
                 title, summary = re.sub(r"\s-\s[^-]+$", "", it["title"]), ""
-            classified[u] = {"cat": cat, "title": title, "summary": summary}
+            # 'llm' = ya se consultó al LLM (aunque omitiera la noticia): no reenviar en cada corrida
+            classified[u] = {"cat": cat, "title": title, "summary": summary, "llm": bool(llm)}
 
     def section(cat, sid, title):
         rows = [(u, c) for u, c in classified.items() if c["cat"] == cat][:MAX_PER_SECTION]
