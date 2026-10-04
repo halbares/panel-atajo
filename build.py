@@ -8,10 +8,11 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from sources import crypto, hearing, nyt
+from sources import articles, hearing, nyt
 
 OUT = pathlib.Path("public/data.json")
-ORDER = ["crypto", "nyt", "audicion-hw", "audicion-bio"]
+ORDER = ["nyt", "nyt-tech", "nyt-salud", "nyt-gadgets", "audicion-hw", "audicion-bio"]
+ART_TITLES = {"nyt-tech": "💻 NYT: Tecnología", "nyt-salud": "🩺 NYT: Salud", "nyt-gadgets": "🔌 NYT: Gadgets"}
 
 
 def load_env():
@@ -58,8 +59,6 @@ def main():
             print(f"[{sid}] ERROR: {e!r}")
             return stale(prev_secs.get(sid), sid, title)
 
-    secs["crypto"] = run("crypto", "💰 Cripto", lambda: crypto.fetch(os.environ.get("COINGECKO_KEY")))
-
     nyt_key = os.environ.get("NYT_API_KEY")
     if nyt_key:
         secs["nyt"] = run("nyt", "📚 Libros NYT", lambda: nyt.fetch(nyt_key, prev_secs.get("nyt")))
@@ -68,6 +67,15 @@ def main():
         secs["nyt"] = stale(prev_secs.get("nyt"), "nyt", "📚 Libros NYT")
 
     token = os.environ.get("GROQ_API_KEY")
+    cache = prev.get("cache", {})
+    try:
+        arts, cache = articles.fetch(cache, token)
+        secs.update({a["id"]: a for a in arts})
+    except Exception as e:
+        print(f"[articles] ERROR: {e!r}")
+        for sid, title in ART_TITLES.items():
+            secs[sid] = stale(prev_secs.get(sid), sid, title)
+
     try:
         hw, bio, state = hearing.fetch(state, token)
         secs["audicion-hw"], secs["audicion-bio"] = hw, bio
@@ -88,7 +96,7 @@ def main():
     full = "\n\n———\n\n".join(f"{s['title']}\n{s['text']}" for s in sections)  # para el Atajo: un solo campo
     OUT.parent.mkdir(exist_ok=True)
     shutil.copy("index.html", OUT.parent / "index.html")  # dashboard estático
-    OUT.write_text(json.dumps({"updated": now.isoformat(timespec="minutes"), "text": full, "sections": sections, "state": state},
+    OUT.write_text(json.dumps({"updated": now.isoformat(timespec="minutes"), "text": full, "sections": sections, "state": state, "cache": cache},
                               ensure_ascii=False, indent=1))
     print(f"OK {len(sections)} secciones -> {OUT}")
 

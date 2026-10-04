@@ -8,7 +8,7 @@ import urllib.parse
 from zoneinfo import ZoneInfo
 
 import feedparser
-import requests
+from . import llm
 
 TZ = ZoneInfo("Europe/Madrid")
 GN = "https://news.google.com/rss/search?q={q}+when:1d&hl={hl}&gl={gl}&ceid={ceid}"
@@ -38,9 +38,6 @@ BIO_KW = ["gene therapy", "terapia génica", "terapia genica", "hair cell", "oto
 EXCLUDE_KW = ["cochlear", "coclear"]
 NOISE_KW = ["forum", "council", "ball ", "recording", "grabaciones"]
 
-# Groq: cuota gratuita sin tarjeta (30 req/min, ~1000 req/día). Modelos en orden de preferencia.
-MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,llama-3.3-70b-versatile,openai/gpt-oss-20b").split(",")
-MODELS_URL = "https://api.groq.com/openai/v1/chat/completions"
 BATCH = 12  # el tope de tokens/minuto del plan gratis es bajo: lotes pequeños
 MAX_PER_SECTION = 8
 
@@ -109,27 +106,8 @@ def _llm_classify_batch(new, token):
         'Responde SOLO con JSON: {"items":[{"id":0,"category":"...","titulo":"...","resumen":"..."}]}\n\n'
         + json.dumps(listing, ensure_ascii=False)
     )
-    last = None
-    for model in MODELS:
-        try:
-            r = requests.post(
-                MODELS_URL,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0},
-                timeout=120,
-            )
-            r.raise_for_status()
-            u = r.json().get("usage", {})
-            print(f"[hearing] {model}: {u.get('prompt_tokens')}+{u.get('completion_tokens')} tokens, "
-                  f"restan {r.headers.get('x-ratelimit-remaining-requests')} req/día, "
-                  f"{r.headers.get('x-ratelimit-remaining-tokens')} tokens/min")
-            text = r.json()["choices"][0]["message"]["content"]
-            out = json.loads(text[text.index("{"): text.rindex("}") + 1])["items"]
-            return {x["id"]: x for x in out}
-        except Exception as e:
-            last = f"{model}: {e!r}"
-            print(f"[hearing] {last}")
-    raise RuntimeError(last)
+    out = llm.chat_json(prompt, token, "hearing")["items"]
+    return {x["id"]: x for x in out}
 
 
 def _llm_classify(new, token):
