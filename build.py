@@ -84,8 +84,9 @@ def main():
         s["text"] += f"\n\n🕐 {stamp}" if "updated" in s and sid != "nyt" else ""
         sections.append(s)
 
+    full = "\n\n———\n\n".join(f"{s['title']}\n{s['text']}" for s in sections)  # para el Atajo: un solo campo
     OUT.parent.mkdir(exist_ok=True)
-    OUT.write_text(json.dumps({"updated": now.isoformat(timespec="minutes"), "sections": sections, "state": state},
+    OUT.write_text(json.dumps({"updated": now.isoformat(timespec="minutes"), "text": full, "sections": sections, "state": state},
                               ensure_ascii=False, indent=1))
     print(f"OK {len(sections)} secciones -> {OUT}")
 
