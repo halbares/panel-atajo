@@ -30,6 +30,13 @@
   .warn { color:var(--warn); font-size:14px; margin:0 0 10px; }
   .time { color:var(--mute); font-size:13px; }
   .sub { color:var(--mute); font-size:15px; }
+  .row { display:flex; gap:10px; align-items:flex-start; }
+  .row > .txt { flex:1; min-width:0; }
+  .star { border:none; background:none; padding:2px 4px; font-size:22px; line-height:1; color:var(--mute); cursor:pointer; }
+  .star.on { color:var(--accent); }
+  .del { border:none; color:var(--mute); padding:2px 6px; font-size:18px; }
+  .hint { color:var(--mute); font-size:14px; }
+  .src { color:var(--mute); font-size:12px; }
   .err { padding:24px; text-align:center; color:var(--warn); }
 </style>
 </head>
@@ -43,12 +50,65 @@
 </main>
 <script>
 const out = document.getElementById("out"), upd = document.getElementById("upd");
+const KEY = "panel-atajo:favoritos";
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text != null) e.textContent = text;
   return e;
+}
+
+// Favoritos: se guardan en este navegador (localStorage) con título, resumen y enlace,
+// para que sigan ahí aunque el artículo ya no esté en el panel.
+let favs = [];
+try { favs = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { favs = []; }
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(favs)); } catch (e) {} };
+const isFav = url => favs.some(f => f.url === url);
+
+function toggleFav(item) {
+  if (isFav(item.url)) favs = favs.filter(f => f.url !== item.url);
+  else favs.unshift({ ...item, saved: new Date().toISOString() });
+  persist();
+  document.querySelectorAll(".star").forEach(b => {
+    const on = isFav(b.dataset.url);
+    b.classList.toggle("on", on);
+    b.textContent = on ? "★" : "☆";
+    b.setAttribute("aria-label", on ? "Quitar de favoritos" : "Guardar en favoritos");
+  });
+  renderFavs();
+}
+
+function starButton(item) {
+  const b = el("button", "star" + (isFav(item.url) ? " on" : ""), isFav(item.url) ? "★" : "☆");
+  b.type = "button"; b.dataset.url = item.url;
+  b.setAttribute("aria-label", isFav(item.url) ? "Quitar de favoritos" : "Guardar en favoritos");
+  b.addEventListener("click", () => toggleFav(item));
+  return b;
+}
+
+function link(text, url) {
+  const a = el("a", null, text); a.href = url; a.target = "_blank"; a.rel = "noopener";
+  return a;
+}
+
+function renderFavs() {
+  let d = document.getElementById("favs");
+  if (!d) { d = el("details"); d.id = "favs"; d.open = true; out.prepend(d); }
+  d.replaceChildren(el("summary", null, "⭐ Favoritos (" + favs.length + ")"));
+  const body = el("div", "body");
+  if (!favs.length) body.appendChild(el("p", "hint", "Toca ☆ junto a un artículo para guardarlo aquí."));
+  for (const f of favs) {
+    const row = el("div", "row"), txt = el("div", "txt"), p = el("p");
+    p.appendChild(link(f.title, f.url));
+    if (f.summary) { p.appendChild(document.createElement("br")); p.appendChild(el("span", "sub", f.summary)); }
+    if (f.section) { p.appendChild(document.createElement("br")); p.appendChild(el("span", "src", f.section)); }
+    txt.appendChild(p); row.appendChild(txt);
+    const x = el("button", "del", "✕"); x.type = "button"; x.setAttribute("aria-label", "Quitar de favoritos");
+    x.addEventListener("click", () => toggleFav(f));
+    row.appendChild(x); body.appendChild(row);
+  }
+  d.appendChild(body);
 }
 
 function renderSection(s) {
@@ -68,10 +128,17 @@ function renderSection(s) {
     const p = el("p");
     if (/^🕐/.test(para.trim())) { p.className = "time"; p.textContent = para; }
     else if (lines[0].startsWith("•") && byTitle.has(first)) {
-      const a = el("a", null, first); a.href = byTitle.get(first); a.target = "_blank"; a.rel = "noopener";
-      p.appendChild(a);
-      if (lines.length > 1) { p.appendChild(document.createElement("br")); p.appendChild(el("span", "sub", lines.slice(1).join(" ").trim())); }
-    } else p.textContent = para;
+      const summary = lines.slice(1).join(" ").trim(), url = byTitle.get(first);
+      p.appendChild(link(first, url));
+      if (summary) { p.appendChild(document.createElement("br")); p.appendChild(el("span", "sub", summary)); }
+      const row = el("div", "row"), txt = el("div", "txt");
+      txt.appendChild(p); row.appendChild(txt);
+      row.appendChild(starButton({ title: first, url, summary, section: s.title }));
+      row.style.marginBottom = "12px";
+      body.appendChild(row);
+      continue;
+    } else if (/^Hoy no se produjeron/.test(para)) { p.className = "hint"; p.textContent = para; }
+    else p.textContent = para;
     body.appendChild(p);
   }
   d.appendChild(body);
@@ -85,9 +152,11 @@ async function load() {
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     out.replaceChildren(...d.sections.map(renderSection));
+    renderFavs();
     upd.textContent = "Actualizado " + new Date(d.updated).toLocaleString("es", { weekday:"short", hour:"2-digit", minute:"2-digit" });
   } catch (e) {
     out.replaceChildren(el("div", "err", "No se pudo cargar data.json (" + e.message + ")."));
+    renderFavs();
     upd.textContent = "";
   }
 }

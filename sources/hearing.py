@@ -5,12 +5,11 @@ import json
 import os
 import re
 import urllib.parse
-from zoneinfo import ZoneInfo
 
 import feedparser
 from . import llm
+from .common import EMPTY_TODAY, published as _published, today as _today
 
-TZ = ZoneInfo("Europe/Madrid")
 GN = "https://news.google.com/rss/search?q={q}+when:1d&hl={hl}&gl={gl}&ceid={ceid}"
 EN = ("en-US", "US", "US:en")
 ES = ("es", "ES", "ES:es")
@@ -37,21 +36,17 @@ BIO_KW = ["gene therapy", "terapia génica", "terapia genica", "hair cell", "oto
           "células madre", "celulas madre", "hearing loss cure", "cure for hearing", "cura de la sordera"]
 EXCLUDE_KW = ["cochlear", "coclear"]
 NOISE_KW = ["forum", "council", "ball ", "recording", "grabaciones"]
+# Ofertas, descuentos y compras: nunca son noticia. Red de seguridad determinista, además del LLM.
+DEAL_RE = re.compile(
+    r"discount|\bdeals?\b|\bsale\b|prime day|black friday|cyber monday|coupon|lowest price|cheapest|best price|"
+    r"\d+\s?%\s?off|\$\s?\d+\s?off|down to \$|drops? to \$|now \$|for \$\d|price (cut|drop)|"
+    r"hit low|low \$\d|\$\d+ price|"
+    r"descuento|oferta|rebaja|cupón|cupon|precio mínimo|precio minimo|bajan? a \d|baja a \d",
+    re.I)
+STATE_V = 2  # al subir, se reclasifica lo guardado del día
 
 BATCH = 12  # el tope de tokens/minuto del plan gratis es bajo: lotes pequeños
 MAX_PER_SECTION = 8
-
-
-def _today():
-    forced = os.environ.get("PANEL_TODAY")  # solo para pruebas: YYYY-MM-DD
-    return dt.date.fromisoformat(forced) if forced else dt.datetime.now(TZ).date()
-
-
-def _published(entry):
-    p = entry.get("published_parsed") or entry.get("updated_parsed")
-    if not p:
-        return None
-    return dt.datetime.fromtimestamp(calendar.timegm(p), dt.timezone.utc).astimezone(TZ)
 
 
 def _norm(title):
@@ -83,7 +78,7 @@ def _gather(today):
 def _keyword_classify(item):
     """Respaldo sin LLM: solo mira el titular para evitar ruido de foros y resúmenes."""
     t = item["title"].lower()
-    if any(k in t for k in EXCLUDE_KW + NOISE_KW):
+    if any(k in t for k in EXCLUDE_KW + NOISE_KW) or DEAL_RE.search(t):
         return "descartar"
     if any(k in t for k in BIO_KW):
         return "biotech"
@@ -101,7 +96,10 @@ def _llm_classify_batch(new, token):
         "'hardware' (audífonos OTC, auriculares/AirPods con función de audífono, gafas inteligentes con subtítulos o "
         "audición asistida, Auracast/LE Audio, gadgets de accesibilidad auditiva), "
         "'biotech' (terapia génica, regeneración de células ciliadas, avances hacia la cura de la hipoacusia) o "
-        "'descartar'. Descarta SIEMPRE implantes cocleares, publicidad sin novedad, ofertas y noticias no relacionadas. "
+        "'descartar'. Descarta SIEMPRE: implantes cocleares; ofertas, descuentos, rebajas, precios, Prime Day o guías de compra "
+        "(aunque sean de AirPods u otros audífonos); publicidad; reseñas de producto sin novedad técnica; "
+        "noticias no relacionadas. Si dos noticias cuentan lo mismo, conserva solo la primera y descarta el resto. "
+        "Ante la duda, descarta. "
         "Añade 'titulo' (titular en español, sin el nombre del medio) y 'resumen' (una línea en español, máx. 140 caracteres). "
         'Responde SOLO con JSON: {"items":[{"id":0,"category":"...","titulo":"...","resumen":"..."}]}\n\n'
         + json.dumps(listing, ensure_ascii=False)
@@ -121,7 +119,8 @@ def _llm_classify(new, token):
 def fetch(prev_state, token=None):
     """Devuelve (sección_hw, sección_bio, nuevo_estado)."""
     today = _today()
-    state = prev_state if prev_state and prev_state.get("day") == str(today) else {"day": str(today), "classified": {}}
+    state = (prev_state if prev_state and prev_state.get("day") == str(today) and prev_state.get("v") == STATE_V
+             else {"day": str(today), "v": STATE_V, "classified": {}})
     classified = state["classified"]
     found = _gather(today)
     # con LLM disponible, reclasifica lo que quedó solo por palabras clave (sin marca 'llm')
@@ -136,6 +135,8 @@ def fetch(prev_state, token=None):
                 print(f"[hearing] LLM falló, uso palabras clave: {e}")
         for i, (u, it) in enumerate(new.items()):
             res = llm.get(i)
+            if DEAL_RE.search(it["title"]) or (llm and res is None):
+                res = {"category": "descartar"}  # oferta, o el LLM la omitió: ante la duda se descarta
             if res and res.get("category") in ("hardware", "biotech", "descartar"):
                 cat = res["category"]
                 title, summary = res.get("titulo") or it["title"], res.get("resumen", "")
@@ -148,7 +149,7 @@ def fetch(prev_state, token=None):
     def section(cat, sid, title):
         rows = [(u, c) for u, c in classified.items() if c["cat"] == cat][:MAX_PER_SECTION]
         if not rows:
-            text = "Sin novedades hoy."
+            text = EMPTY_TODAY
         else:
             text = "\n\n".join(f"• {c['title']}" + (f"\n  {c['summary']}" if c["summary"] else "") for _, c in rows)
         return {"id": sid, "title": title, "text": text,

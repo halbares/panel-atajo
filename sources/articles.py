@@ -5,6 +5,7 @@ import re
 import feedparser
 
 from . import llm
+from .common import EMPTY_TODAY, published, today
 
 FEEDS = [
     ("nyt-tech", "💻 NYT: Tecnología", "Technology"),
@@ -43,13 +44,15 @@ def _translate(arts, token):
 
 
 def fetch(cache, token=None):
-    """Devuelve (lista_de_secciones, cache_nuevo). Cache: url -> {titulo, resumen}."""
+    """Devuelve (lista_de_secciones, cache_nuevo). Cache: url -> {titulo, resumen}. Solo artículos de hoy."""
+    day = today()
     picked, seen = [], set()
     for sid, title, slug in FEEDS:
         rows = []
         for e in _read(slug):
             link = e.get("link")
-            if not link or link in seen:
+            pub = published(e)
+            if not link or link in seen or not pub or pub.date() != day:  # frescura estricta: solo hoy
                 continue
             seen.add(link)
             rows.append((link, {"title": e.get("title", "").strip(),
@@ -74,5 +77,5 @@ def fetch(cache, token=None):
             t = c.get("titulo") or a["title"]
             blocks.append(f"• {t}" + (f"\n  {c['resumen']}" if c.get("resumen") else ""))
             items.append({"title": t, "url": url})
-        sections.append({"id": sid, "title": title, "text": "\n\n".join(blocks), "items": items})
+        sections.append({"id": sid, "title": title, "text": "\n\n".join(blocks) or EMPTY_TODAY, "items": items})
     return sections, cache

@@ -4,11 +4,11 @@ import json
 import os
 import pathlib
 import shutil
-from zoneinfo import ZoneInfo
 
 import requests
 
 from sources import articles, hearing, nyt
+from sources.common import TZ
 
 OUT = pathlib.Path("public/data.json")
 ORDER = ["nyt", "nyt-tech", "nyt-salud", "nyt-gadgets", "audicion-hw", "audicion-bio"]
@@ -49,7 +49,7 @@ def main():
     load_env()
     prev = load_prev()
     prev_secs = {s["id"]: s for s in prev.get("sections", [])}
-    now = dt.datetime.now(ZoneInfo("Europe/Madrid"))
+    now = dt.datetime.now(TZ)
     secs, state = {}, prev.get("state")
 
     def run(sid, title, fn):
