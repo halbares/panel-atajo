@@ -38,8 +38,9 @@ BIO_KW = ["gene therapy", "terapia génica", "terapia genica", "hair cell", "oto
 EXCLUDE_KW = ["cochlear", "coclear"]
 NOISE_KW = ["forum", "council", "ball ", "recording", "grabaciones"]
 
-MODEL = os.environ.get("MODELS_MODEL", "openai/gpt-4.1-mini")
-MODELS_URL = "https://models.github.ai/inference/chat/completions"
+# Modelos gratuitos de OpenRouter, en orden de preferencia (los :free tienen cupos y caen a veces).
+MODELS = os.environ.get("OPENROUTER_MODELS", "google/gemma-4-31b-it:free,nvidia/nemotron-3-super-120b-a12b:free,google/gemma-4-26b-a4b-it:free").split(",")
+MODELS_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_PER_SECTION = 8
 
 
@@ -107,16 +108,23 @@ def _llm_classify(new, token):
         'Responde SOLO con JSON: {"items":[{"id":0,"category":"...","titulo":"...","resumen":"..."}]}\n\n'
         + json.dumps(listing, ensure_ascii=False)
     )
-    r = requests.post(
-        MODELS_URL,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"model": MODEL, "messages": [{"role": "user", "content": prompt}],
-              "response_format": {"type": "json_object"}, "temperature": 0},
-        timeout=90,
-    )
-    r.raise_for_status()
-    out = json.loads(r.json()["choices"][0]["message"]["content"])["items"]
-    return {x["id"]: x for x in out}
+    last = None
+    for model in MODELS:
+        try:
+            r = requests.post(
+                MODELS_URL,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0},
+                timeout=120,
+            )
+            r.raise_for_status()
+            text = r.json()["choices"][0]["message"]["content"]
+            out = json.loads(text[text.index("{"): text.rindex("}") + 1])["items"]
+            return {x["id"]: x for x in out}
+        except Exception as e:
+            last = f"{model}: {e!r}"
+            print(f"[hearing] {last}")
+    raise RuntimeError(last)
 
 
 def fetch(prev_state, token=None):

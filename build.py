@@ -66,7 +66,7 @@ def main():
         print("[nyt] sin NYT_API_KEY")
         secs["nyt"] = stale(prev_secs.get("nyt"), "nyt", "📚 Libros NYT")
 
-    token = os.environ.get("GITHUB_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    token = os.environ.get("OPENROUTER_API_KEY")
     try:
         hw, bio, state = hearing.fetch(state, token)
         secs["audicion-hw"], secs["audicion-bio"] = hw, bio
