@@ -142,7 +142,8 @@ def fetch(prev_state, token=None):
     state = prev_state if prev_state and prev_state.get("day") == str(today) else {"day": str(today), "classified": {}}
     classified = state["classified"]
     found = _gather(today)
-    new = {u: it for u, it in found.items() if u not in classified}
+    # con LLM disponible, reclasifica lo que quedó solo por palabras clave (sin resumen)
+    new = {u: it for u, it in found.items() if u not in classified or (token and not classified[u]["summary"])}
 
     if new:
         llm = {}
