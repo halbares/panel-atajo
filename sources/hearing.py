@@ -38,9 +38,10 @@ BIO_KW = ["gene therapy", "terapia génica", "terapia genica", "hair cell", "oto
 EXCLUDE_KW = ["cochlear", "coclear"]
 NOISE_KW = ["forum", "council", "ball ", "recording", "grabaciones"]
 
-# Modelos gratuitos de OpenRouter, en orden de preferencia (los :free tienen cupos y caen a veces).
-MODELS = os.environ.get("OPENROUTER_MODELS", "google/gemma-4-31b-it:free,nvidia/nemotron-3-super-120b-a12b:free,google/gemma-4-26b-a4b-it:free").split(",")
-MODELS_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Groq: cuota gratuita sin tarjeta (30 req/min, ~1000 req/día). Modelos en orden de preferencia.
+MODELS = os.environ.get("LLM_MODELS", "openai/gpt-oss-120b,llama-3.3-70b-versatile,openai/gpt-oss-20b").split(",")
+MODELS_URL = "https://api.groq.com/openai/v1/chat/completions"
+BATCH = 12  # el tope de tokens/minuto del plan gratis es bajo: lotes pequeños
 MAX_PER_SECTION = 8
 
 
@@ -96,7 +97,7 @@ def _keyword_classify(item):
     return "descartar"
 
 
-def _llm_classify(new, token):
+def _llm_classify_batch(new, token):
     listing = [{"id": i, "title": it["title"], "summary": it["summary"]} for i, (_, it) in enumerate(new.items())]
     prompt = (
         "Clasifica noticias sobre audición. Para cada una devuelve category: "
@@ -125,6 +126,14 @@ def _llm_classify(new, token):
             last = f"{model}: {e!r}"
             print(f"[hearing] {last}")
     raise RuntimeError(last)
+
+
+def _llm_classify(new, token):
+    items, out = list(new.items()), {}
+    for i in range(0, len(items), BATCH):
+        res = _llm_classify_batch(dict(items[i:i + BATCH]), token)
+        out.update({i + k: v for k, v in res.items()})
+    return out
 
 
 def fetch(prev_state, token=None):

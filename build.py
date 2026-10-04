@@ -66,7 +66,7 @@ def main():
         print("[nyt] sin NYT_API_KEY")
         secs["nyt"] = stale(prev_secs.get("nyt"), "nyt", "📚 Libros NYT")
 
-    token = os.environ.get("OPENROUTER_API_KEY")
+    token = os.environ.get("GROQ_API_KEY")
     try:
         hw, bio, state = hearing.fetch(state, token)
         secs["audicion-hw"], secs["audicion-bio"] = hw, bio
