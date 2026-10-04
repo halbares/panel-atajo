@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Panel</title>
+<style>
+  :root { --bg:#f4f1ea; --card:#fffdf8; --ink:#1d1b16; --mute:#6f6a5d; --line:#e3ddcf; --accent:#2f6f5e; --warn:#a4571a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14130f; --card:#1d1c17; --ink:#ece7da; --mute:#9a9484; --line:#2c2a22; --accent:#6fc2a9; --warn:#e0a060; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif;
+         padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  main { max-width: 680px; margin: 0 auto; }
+  header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  h1 { font-size:22px; margin:0; letter-spacing:-.01em; }
+  #upd { color:var(--mute); font-size:13px; }
+  button { background:none; border:1px solid var(--line); color:var(--accent); border-radius:8px; padding:6px 12px; font:inherit; font-size:14px; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:12px; overflow:hidden; }
+  summary { padding:14px 16px; font-weight:600; font-size:17px; cursor:pointer; list-style:none; display:flex; justify-content:space-between; }
+  summary::-webkit-details-marker { display:none; }
+  summary::after { content:"▾"; color:var(--mute); }
+  details:not([open]) summary::after { content:"▸"; }
+  .body { padding:0 16px 14px; }
+  .body p { margin:0 0 12px; white-space:pre-wrap; }
+  .body p:last-child { margin-bottom:0; }
+  .body a { color:var(--ink); font-weight:600; text-decoration-color:var(--accent); text-underline-offset:3px; }
+  .warn { color:var(--warn); font-size:14px; margin:0 0 10px; }
+  .time { color:var(--mute); font-size:13px; }
+  .sub { color:var(--mute); font-size:15px; }
+  .err { padding:24px; text-align:center; color:var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Panel</h1><div id="upd">Cargando…</div></div>
+    <button id="reload" type="button">Actualizar</button>
+  </header>
+  <div id="out"></div>
+</main>
+<script>
+const out = document.getElementById("out"), upd = document.getElementById("upd");
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderSection(s) {
+  const d = el("details"); d.open = true;
+  d.appendChild(el("summary", null, s.title));
+  const body = el("div", "body");
+  let text = s.text || "";
+  if (text.startsWith("⚠️ Sin actualizar")) {
+    body.appendChild(el("p", "warn", "⚠️ Sin actualizar: se muestran los últimos datos guardados."));
+    text = text.replace(/^⚠️ Sin actualizar\n?/, "");
+  }
+  const byTitle = new Map((s.items || []).map(i => [i.title, i.url]));
+  for (const para of text.split(/\n{2,}/)) {
+    if (!para.trim()) continue;
+    const lines = para.split("\n");
+    const first = lines[0].replace(/^•\s*/, "");
+    const p = el("p");
+    if (/^🕐/.test(para.trim())) { p.className = "time"; p.textContent = para; }
+    else if (lines[0].startsWith("•") && byTitle.has(first)) {
+      const a = el("a", null, first); a.href = byTitle.get(first); a.target = "_blank"; a.rel = "noopener";
+      p.appendChild(a);
+      if (lines.length > 1) { p.appendChild(document.createElement("br")); p.appendChild(el("span", "sub", lines.slice(1).join(" ").trim())); }
+    } else p.textContent = para;
+    body.appendChild(p);
+  }
+  d.appendChild(body);
+  return d;
+}
+
+async function load() {
+  upd.textContent = "Cargando…";
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    out.replaceChildren(...d.sections.map(renderSection));
+    upd.textContent = "Actualizado " + new Date(d.updated).toLocaleString("es", { weekday:"short", hour:"2-digit", minute:"2-digit" });
+  } catch (e) {
+    out.replaceChildren(el("div", "err", "No se pudo cargar data.json (" + e.message + ")."));
+    upd.textContent = "";
+  }
+}
+document.getElementById("reload").addEventListener("click", load);
+load();
+</script>
+</body>
+</html>

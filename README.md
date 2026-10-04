@@ -17,12 +17,8 @@ URL: `https://halbares.github.io/panel-atajo/data.json`
 
 Secciones: `crypto`, `nyt`, `audicion-hw`, `audicion-bio`. Si una fuente falla, el texto lleva `⚠️ Sin actualizar`.
 
-## Atajo de iPhone (Botón de Acción)
+## Dashboard y Atajo de iPhone
 
-1. Atajos → nuevo atajo → **Obtener contenido de URL** con la URL de arriba.
-2. **Obtener valor del diccionario** → clave `sections` (lista).
-3. **Repetir con cada elemento** → dentro: **Obtener valor del diccionario** → `title`, y otro → `text`; únelos con **Texto** (`título` + salto + `texto`).
-4. Fuera del bucle: **Combinar texto** (separador: dos saltos de línea) → **Mostrar resultado**.
-5. Ajustes → Botón de Acción → **Atajo** → elige este atajo.
+Dashboard (HTML estático, `index.html`, se publica junto a `data.json`): https://halbares.github.io/panel-atajo/
 
-Para elegir sección al pulsar: reemplaza el bucle por **Elegir de la lista** sobre los `title` y filtra por el elegido.
+Atajo de 1 acción: **Abrir URL** con esa dirección. Luego Ajustes → Botón de Acción → Atajo → elegir el atajo.

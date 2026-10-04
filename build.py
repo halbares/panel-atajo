@@ -3,6 +3,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import shutil
 from zoneinfo import ZoneInfo
 
 import requests
@@ -86,6 +87,7 @@ def main():
 
     full = "\n\n———\n\n".join(f"{s['title']}\n{s['text']}" for s in sections)  # para el Atajo: un solo campo
     OUT.parent.mkdir(exist_ok=True)
+    shutil.copy("index.html", OUT.parent / "index.html")  # dashboard estático
     OUT.write_text(json.dumps({"updated": now.isoformat(timespec="minutes"), "text": full, "sections": sections, "state": state},
                               ensure_ascii=False, indent=1))
     print(f"OK {len(sections)} secciones -> {OUT}")
